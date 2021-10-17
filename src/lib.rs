@@ -50,7 +50,7 @@ where
             .write_register(self.addr, Register::DeviceConfiguration, config.into());
     }
 
-    pub fn get_temp(&mut self) -> Result<I12F4, ()> {
+    pub fn get_temp(&mut self) -> Result<I12F4, DI::Error> {
         let val = self.iface.read_register(self.addr, Register::HotJunctionTemp)?;
         Ok(I12F4::from_be_bytes(val.to_be_bytes()))
     }
