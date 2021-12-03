@@ -1,20 +1,16 @@
-use crate::{Address, DeviceConfig, Register, SensorConfig};
-use embassy_traits::delay::Delay;
+use crate::{Address, DeviceConfig, Mode, Register, SensorConfig};
 use embassy_traits::i2c::I2c;
 use fixed::types::I12F4;
 
 #[derive(Debug, Default)]
-pub struct AsyncI2cInterface<TWI, DELAY> {
+pub struct Mcp960x<TWI> {
     pub(crate) twi: TWI,
     address: Address,
-    delay: DELAY,
-    d_conf: DeviceConfig,
 }
 
-impl<TWI, DELAY> AsyncI2cInterface<TWI, DELAY>
+impl<TWI> Mcp960x<TWI>
 where
     TWI: I2c,
-    DELAY: Delay,
 {
     pub type I2cError = <TWI as I2c>::Error;
     async fn write_register(&mut self, register: Register, data: u8) -> Result<(), TWI::Error> {
@@ -44,28 +40,37 @@ where
         todo!()
     }
 
-    pub async fn set_sensor_config(&mut self, config: &SensorConfig) -> Result<(), TWI::Error> {
+    pub async fn get_sensor_config(&mut self) -> Result<SensorConfig, TWI::Error> {
+        self.read_register_u8(Register::SensorConfiguration)
+            .await
+            .map(|conf| conf.into())
+    }
+
+    pub async fn write_sensor_config(&mut self, config: &SensorConfig) -> Result<(), TWI::Error> {
         self.write_register(Register::SensorConfiguration, config.as_byte())
             .await
     }
 
-    pub fn set_device_config(&mut self, config: &DeviceConfig) {
-        self.d_conf = *config;
-        // self.write_device_config().await
+    pub async fn get_device_config(&mut self) -> Result<DeviceConfig, TWI::Error> {
+        self.read_register_u8(Register::DeviceConfiguration)
+            .await
+            .map(|conf| conf.into())
     }
-
-    pub async fn write_device_config(&mut self) -> Result<(), TWI::Error> {
-        self.write_register(Register::DeviceConfiguration, self.d_conf.as_byte())
+    pub async fn write_device_config(&mut self, config: &DeviceConfig) -> Result<(), TWI::Error> {
+        self.write_register(Register::DeviceConfiguration, config.as_byte())
             .await
     }
 
-    pub fn new(twi: TWI, address: Address, delay: DELAY) -> Self {
-        Self {
-            twi,
-            address,
-            delay,
-            d_conf: Default::default(),
-        }
+    pub async fn new(
+        twi: TWI,
+        address: Address,
+        device: &DeviceConfig,
+        sensor: &SensorConfig,
+    ) -> Result<Self, TWI::Error> {
+        let mut this = Self { twi, address };
+        this.write_device_config(device).await?;
+        this.write_sensor_config(sensor).await?;
+        Ok(this)
     }
 
     pub async fn get_temp(&mut self) -> Result<I12F4, TWI::Error> {
@@ -92,17 +97,23 @@ where
             .map(|r| SensorRegister::new(r))
     }
 
-    async fn poll_burst(&mut self) -> Result<bool, TWI::Error> {
-        self.get_status().await.map(|s| s.burst_complete() == 1)
+    pub async fn set_operating_mode(&mut self, mode: Mode) -> Result<(), TWI::Error> {
+        let mut config = self.get_device_config().await?;
+        config.shutdown = mode;
+        self.write_device_config(&config).await
     }
 
-    pub async fn get_burst_temp(&mut self) -> Result<I12F4, TWI::Error> {
-        self.write_device_config().await?;
-        while !self.poll_burst().await? {
-            self.delay.delay_ms(150).await
-        }
-        self.get_temp().await
-    }
+    // async fn poll_burst(&mut self) -> Result<bool, TWI::Error> {
+    //     self.get_status().await.map(|s| s.burst_complete() == 1)
+    // }
+
+    // pub async fn get_burst_temp(&mut self) -> Result<I12F4, TWI::Error> {
+    //     self.write_device_config().await?;
+    //     while !self.poll_burst().await? {
+    //         self.delay.delay_ms(150).await
+    //     }
+    //     self.get_temp().await
+    // }
 }
 
 use bitutils::bf;

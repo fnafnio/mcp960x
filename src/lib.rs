@@ -1,6 +1,4 @@
 #![no_std]
-#![feature(type_alias_impl_trait)]
-#![feature(generic_associated_types)]
 #![feature(inherent_associated_types)]
 
 // This mod MUST go first, so that the others see its macros.
@@ -83,7 +81,7 @@ pub struct DeviceConfig {
     pub resolution: Resolution,
     pub adc_resolution: AdcResolution,
     pub burst_mode: BurstMode,
-    pub shutdown: Shutdown,
+    pub shutdown: Mode,
 }
 
 impl From<u8> for DeviceConfig {
@@ -108,7 +106,7 @@ impl Default for DeviceConfig {
             resolution: Resolution::High,
             adc_resolution: AdcResolution::R14,
             burst_mode: BurstMode::S8,
-            shutdown: Shutdown::Burst,
+            shutdown: Mode::Burst,
         }
     }
 }
@@ -159,7 +157,7 @@ pub enum BurstMode {
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Clone, Copy, FromPrimitive, ToPrimitive)]
-pub enum Shutdown {
+pub enum Mode {
     Normal = 0,
     Shutdown = 1,
     Burst = 2,
