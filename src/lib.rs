@@ -1,62 +1,31 @@
 #![no_std]
+#![feature(type_alias_impl_trait)]
+#![feature(generic_associated_types)]
+#![feature(inherent_associated_types)]
 
-use core::{convert::TryFrom, result::Result};
-use embedded_hal::{self as hal, digital::blocking::OutputPin, i2c::blocking::*};
-use fixed::types::I12F4;
+// This mod MUST go first, so that the others see its macros.
+pub(crate) mod fmt;
 
-use core::marker::PhantomData;
-// use embedded_hal::blocking::i2c::*;
-use embedded_hal::i2c::blocking::*;
+#[cfg(feature = "async")]
+pub mod embassy_async;
 
-use embedded_hal::i2c::SevenBitAddress;
-/// All possible errors in this crate
-#[derive(Debug, PartialEq)]
-pub enum Error<CommE> {
-    /// Communication error
-    Comm(CommE),
-}
-
-#[derive(Debug, defmt::Format, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
 pub enum Address {
     Addr0 = 0x66,
     Addr1 = 0x67,
 }
 
-impl Into<SevenBitAddress> for Address {
-    fn into(self) -> SevenBitAddress {
-        self as u8
-    }
-}
-pub struct MCP9600<DI> {
-    iface: DI,
-    addr: Address,
-}
-
-impl<DI> MCP9600<DI>
-where
-    DI: interface::WriteCommand,
-{
-    pub fn new(iface: DI, addr: Address) -> Self {
-        Self { iface, addr }
-    }
-
-    pub fn set_sensor_config(&mut self, config: SensorConfig) {
-        self.iface
-            .write_register(self.addr, Register::SensorConfiguration, config.into());
-    }
-
-    pub fn set_device_config(&mut self, config: DeviceConfig) {
-        self.iface
-            .write_register(self.addr, Register::DeviceConfiguration, config.into());
-    }
-
-    pub fn get_temp(&mut self) -> Result<I12F4, DI::Error> {
-        let val = self.iface.read_register(self.addr, Register::HotJunctionTemp)?;
-        Ok(I12F4::from_be_bytes(val.to_be_bytes()))
+impl Default for Address {
+    fn default() -> Self {
+        Self::Addr0
     }
 }
 
-#[derive(Debug, defmt::Format, Clone, Copy, FromPrimitive, ToPrimitive)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone, Copy, FromPrimitive, ToPrimitive)]
+#[repr(u8)]
 pub enum Register {
     HotJunctionTemp = 0b000,
     JunctionTempDelta = 0b001,
@@ -82,7 +51,8 @@ pub enum Register {
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-#[derive(Debug, defmt::Format, Clone, Copy, FromPrimitive, ToPrimitive)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone, Copy, FromPrimitive, ToPrimitive)]
 pub enum Type {
     K = 0b000,
     J = 0b001,
@@ -94,7 +64,8 @@ pub enum Type {
     R = 0b111,
 }
 
-#[derive(Debug, defmt::Format, Clone, Copy, FromPrimitive, ToPrimitive)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone, Copy, FromPrimitive, ToPrimitive)]
 pub enum Filter {
     N0 = 0b000,
     N1 = 0b001,
@@ -106,11 +77,13 @@ pub enum Filter {
     N7 = 0b111,
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Clone, Copy, Debug)]
 pub struct DeviceConfig {
-    resolution: Resolution,
-    adc_resolution: AdcResolution,
-    burst_mode: BurstMode,
-    shutdown: Shutdown,
+    pub resolution: Resolution,
+    pub adc_resolution: AdcResolution,
+    pub burst_mode: BurstMode,
+    pub shutdown: Shutdown,
 }
 
 impl From<u8> for DeviceConfig {
@@ -129,8 +102,19 @@ impl From<u8> for DeviceConfig {
     }
 }
 
-impl Into<u8> for DeviceConfig {
-    fn into(self) -> u8 {
+impl Default for DeviceConfig {
+    fn default() -> Self {
+        Self {
+            resolution: Resolution::High,
+            adc_resolution: AdcResolution::R14,
+            burst_mode: BurstMode::S8,
+            shutdown: Shutdown::Burst,
+        }
+    }
+}
+
+impl DeviceConfig {
+    pub fn as_byte(&self) -> u8 {
         (self.resolution as u8) << 7
             | (self.adc_resolution as u8) << 5
             | (self.burst_mode as u8) << 2
@@ -138,13 +122,21 @@ impl Into<u8> for DeviceConfig {
     }
 }
 
-#[derive(Debug, defmt::Format, Clone, Copy, FromPrimitive, ToPrimitive)]
+impl Into<u8> for DeviceConfig {
+    fn into(self) -> u8 {
+        self.as_byte()
+    }
+}
+
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone, Copy, FromPrimitive, ToPrimitive)]
 pub enum Resolution {
     High = 0,
     Low = 1,
 }
 
-#[derive(Debug, defmt::Format, Clone, Copy, FromPrimitive, ToPrimitive)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone, Copy, FromPrimitive, ToPrimitive)]
 pub enum AdcResolution {
     R18 = 0,
     R16 = 1,
@@ -152,7 +144,8 @@ pub enum AdcResolution {
     R12 = 3,
 }
 
-#[derive(Debug, defmt::Format, Clone, Copy, FromPrimitive, ToPrimitive)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone, Copy, FromPrimitive, ToPrimitive)]
 pub enum BurstMode {
     S1 = 0b000,
     S2 = 0b001,
@@ -164,7 +157,8 @@ pub enum BurstMode {
     S128 = 0b111,
 }
 
-#[derive(Debug, defmt::Format, Clone, Copy, FromPrimitive, ToPrimitive)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone, Copy, FromPrimitive, ToPrimitive)]
 pub enum Shutdown {
     Normal = 0,
     Shutdown = 1,
@@ -173,6 +167,12 @@ pub enum Shutdown {
 pub struct SensorConfig {
     t_type: Type,
     filter: Filter,
+}
+
+impl SensorConfig {
+    pub fn as_byte(&self) -> u8 {
+        (self.t_type as u8) << 4 | self.filter as u8
+    }
 }
 
 impl Default for SensorConfig {
@@ -194,10 +194,10 @@ impl From<u8> for SensorConfig {
 
 impl Into<u8> for SensorConfig {
     fn into(self) -> u8 {
-        (self.t_type as u8) << 4 | self.filter as u8
+        self.as_byte()
     }
 }
 
-mod interface;
+// mod interface;
 
 mod private;
